@@ -1,0 +1,38 @@
+# Claude state
+.claude/projects/
+.claude/memory/
+.claude/.credentials.json
+.claude.json
+
+# Node
+node_modules/
+.npm
+.pnpm-store/
+dist/
+.next/
+.nuxt/
+.svelte-kit/
+.vite/
+
+# PHP
+vendor/
+.phpunit.cache/
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Dev DB (created by sqlite MCP)
+.dev.db
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+*.swp
+*~
+.idea/
