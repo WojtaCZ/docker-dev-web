@@ -18,8 +18,12 @@ RUN pacman -Syu --noconfirm && \
     && pacman -Scc --noconfirm
 
 # Install Playwright's system deps via its own helper (uses chromium above)
+# Playwright uses the system Chromium instead of downloading its own.
+# --no-sandbox is required when running as a non-root user inside a container;
+# the container boundary is the security isolation layer.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium \
+    PLAYWRIGHT_LAUNCH_OPTIONS_ARGS="--no-sandbox,--disable-setuid-sandbox"
 
 USER dev
 
