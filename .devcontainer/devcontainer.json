@@ -2,23 +2,32 @@
     "name": "dev-template-web",
     "build": {
         "context": "..",
-        "dockerfile": "../Dockerfile"
+        "dockerfile": "../Dockerfile",
+        "args": {
+            "BASE_TAG": "${localEnv:DEV_CHANNEL:latest}"
+        }
     },
     "remoteUser": "dev",
     "workspaceFolder": "/workspace",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-
     "mounts": [
         "source=${localEnv:HOME}/.claude.json,target=/host-claude-auth.json,type=bind",
-        "source=${localEnv:HOME}/.claude,target=/host-claude-dir,type=bind"
+        "source=${localEnv:HOME}/.claude,target=/host-claude-dir,type=bind",
+        "source=dev-cache-npm,target=/home/dev/.npm,type=volume",
+        "source=dev-cache-bun,target=/home/dev/.bun/install/cache,type=volume",
+        "source=dev-cache-composer,target=/home/dev/.cache/composer,type=volume"
     ],
-
-    "appPort": [3000, 5173, 8000, 8080, 8443],
-
-    "runArgs": ["--init"],
-
-    "postCreateCommand": "bash /usr/local/bin/post-create.sh",
-
+    "appPort": [
+        3000,
+        5173,
+        8000,
+        8080,
+        8443
+    ],
+    "runArgs": [
+        "--init"
+    ],
+    "postCreateCommand": "bash /usr/local/bin/web-post-create.sh && dev-doctor || true",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -45,5 +54,8 @@
                 }
             }
         }
+    },
+    "remoteEnv": {
+        "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}"
     }
 }

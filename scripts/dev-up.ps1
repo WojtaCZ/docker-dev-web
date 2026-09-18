@@ -2,6 +2,12 @@
 .SYNOPSIS
     Headless build + run for the web dev container on Windows.
 
+.DESCRIPTION
+    Builds the image (unless -NoBuild) and drops you into an interactive shell
+    inside the container with /workspace bind-mounted to -Workspace (default:
+    current directory), shared Claude auth, persistent package caches, and
+    Docker Desktop's SSH agent forwarding.
+
 .PARAMETER Workspace
     Host directory to mount at /workspace. Defaults to the current directory.
 
@@ -9,24 +15,39 @@
     Skip `docker build` and just run the existing image.
 
 .PARAMETER NoPull
-    Skip `--pull` (offline / pinned builds).
+    Skip `--pull` (don't refresh base image layers). Useful offline or when pinning.
 
 .PARAMETER Rebuild
     Force `docker build --no-cache` for a clean rebuild.
 
+.PARAMETER NoCacheVolumes
+    Don't mount the persistent npm/uv/cargo cache volumes.
+
+.PARAMETER SkipUpdate
+    Skip `claude update` on container start (faster cold start, works offline).
+
+.PARAMETER Doctor
+    Run dev-doctor and exit instead of opening an interactive shell.
+
 .EXAMPLE
     .\scripts\dev-up.ps1
-    .\scripts\dev-up.ps1 -Workspace C:\code\my-site
+    .\scripts\dev-up.ps1 -Workspace C:\code\my-project
     .\scripts\dev-up.ps1 -Rebuild
+    .\scripts\dev-up.ps1 -Doctor
 #>
 [CmdletBinding()]
 param(
-    [string]$Workspace    = (Get-Location).Path,
-    [string]$ImageName    = "dev-template-web",
+    [string]$Workspace = (Get-Location).Path,
+    [string]$ImageName = "dev-template-web",
     [string]$ContainerName = "dev-web",
     [switch]$NoBuild,
     [switch]$NoPull,
-    [switch]$Rebuild
+    [switch]$Rebuild,
+    [switch]$NoCacheVolumes,
+    [switch]$SkipUpdate,
+    [switch]$Doctor,
+    [string[]]$Ports = @(),
+    [string]$Assets
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,7 +65,7 @@ $claudeJson = Join-Path $env:USERPROFILE ".claude.json"
 $claudeDir  = Join-Path $env:USERPROFILE ".claude"
 
 if (-not (Test-Path $claudeJson)) {
-    Write-Warning "$claudeJson not found. Run 'claude' on the host at least once."
+    Write-Warning "$claudeJson not found. Run 'claude' on the host at least once so auth exists."
 }
 if (-not (Test-Path $claudeDir)) {
     New-Item -ItemType Directory -Path $claudeDir | Out-Null
@@ -56,16 +77,52 @@ $dockerArgs = @(
     "--init",
     "-v", "${Workspace}:/workspace",
     "-v", "${claudeJson}:/host-claude-auth.json",
-    "-v", "${claudeDir}:/host-claude-dir",
-    # Expose typical web dev ports
-    "-p", "3000:3000",
-    "-p", "5173:5173",
-    "-p", "8000:8000",
-    "-p", "8080:8080",
-    # Docker Desktop SSH agent forwarding
+    "-v", "${claudeDir}:/host-claude-dir"
+)
+
+# Persistent package caches — without these every --rm run re-downloads
+# npm/uv/cargo content from scratch.
+if (-not $NoCacheVolumes) {
+    $dockerArgs += @(
+        "-v", "dev-cache-npm:/home/dev/.npm",
+        "-v", "dev-cache-uv:/home/dev/.cache/uv",
+        "-v", "dev-cache-cargo:/home/dev/.cargo",
+        "-v", "dev-cache-pkg:/home/dev/.cache/pkg"
+    )
+}
+
+if ($SkipUpdate) { $dockerArgs += @("-e", "DEV_SKIP_UPDATE=1") }
+
+# Publish dev-server ports on loopback only.
+foreach ($p in $Ports) { $dockerArgs += @("-p", "127.0.0.1:${p}:${p}") }
+
+# Licence-encumbered material, mounted rather than baked into the image.
+if ($Assets -and (Test-Path $Assets)) {
+    $dockerArgs += @("-v", "${Assets}:/opt/assets:ro")
+    Write-Host "info: mounting assets from $Assets at /opt/assets"
+}
+
+# Join the backing-services network if `docker compose up -d` has been run.
+docker network inspect docker-dev-web 2>$null | Out-Null
+if ($?) {
+    $dockerArgs += @("--network", "docker-dev-web")
+    Write-Host "info: joining the docker-dev-web service network"
+} else {
+    Write-Host "info: backing services not running. Start them with: docker compose up -d"
+}
+if ($env:GITHUB_TOKEN) { $dockerArgs += @("-e", "GITHUB_TOKEN=$($env:GITHUB_TOKEN)") }
+
+# Docker Desktop on Windows exposes the host ssh-agent at this magic socket.
+# Requires the Windows OpenSSH Authentication Agent service to be running.
+$dockerArgs += @(
     "-v", "/run/host-services/ssh-auth.sock:/ssh-agent",
     "-e", "SSH_AUTH_SOCK=/ssh-agent",
     $ImageName
 )
+
+# Docker Desktop's Linux VM always presents bind mounts as uid 1000, so the
+# HOST_UID remap that dev-up.sh performs is not needed on Windows.
+
+if ($Doctor) { $dockerArgs += "dev-doctor" }
 
 & docker @dockerArgs
