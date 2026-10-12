@@ -17,7 +17,7 @@ pass "bun $(bun --version)"
 
 echo "== php extensions =="
 for ext in sqlite3 intl gd; do
-    php -m | grep -qix "$ext" || fail "php extension $ext not loaded"
+    php -r "exit(extension_loaded(\"$ext\") ? 0 : 1);" || fail "php extension $ext not loaded"
     pass "php-$ext"
 done
 
@@ -95,9 +95,14 @@ json.dump({"stack": "npm", "appName": "demo",
            "build": "echo BUILD_OK $appName",
            "test": "echo TEST_OK"}, open(".web-profile.json", "w"), indent=2)
 PY
-web --list | grep -q build || fail "web --list did not show tasks"
-web --print build | grep -q BUILD_OK || fail "web --print broken"
-web build | grep -q 'BUILD_OK demo' || fail "scalars not exported into task commands"
+# Capture first: under pipefail, `grep -q` exits at the first match and the
+# producer dies of SIGPIPE, failing the pipeline even though the match was found.
+out=$(web --list)
+grep -q build <<<"$out" || fail "web --list did not show tasks"
+out=$(web --print build)
+grep -q BUILD_OK <<<"$out" || fail "web --print broken"
+out=$(web build)
+grep -q 'BUILD_OK demo' <<<"$out" || fail "scalars not exported into task commands"
 pass "web run + scalar export"
 if web nosuchkey >/dev/null 2>&1; then fail "unknown key should exit non-zero"; fi
 pass "unknown key fails loudly"
