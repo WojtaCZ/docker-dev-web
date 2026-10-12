@@ -18,6 +18,9 @@ RUN pacman -Syu --noconfirm && \
         chromium \
     && pacman -Scc --noconfirm
 
+# Arch ships these extensions disabled in php.ini; the packages alone do not load them.
+RUN sed -i -E 's/^;(extension=(gd|intl|pdo_sqlite|sqlite3))$/\1/' /etc/php/php.ini
+
 # Chromium for Playwright. Using the distro build rather than Playwright's own
 # download saves ~300 MB and keeps the browser patched by pacman.
 #
